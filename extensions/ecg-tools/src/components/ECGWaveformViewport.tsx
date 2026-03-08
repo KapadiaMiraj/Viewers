@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { DicomMetadataStore } from '@ohif/core';
 import { ecgToolState } from '../ecgToolState';
-import { hrBus } from '../hrBus';
+import { hrBus, rectBus } from '../hrBus';
 
 const LEAD_NAMES = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
 
@@ -408,6 +408,226 @@ function ActiveQTPreview({ state }: { state: ActiveQTState }) {
   );
 }
 
+// ─── Measurement Rectangle Tool ───────────────────────────────────────────────
+
+interface RectMeasurement {
+  id: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  timeSec: number; // horizontal span converted to seconds
+  voltMv: number; // vertical span converted to mV (approximate)
+  bpm: number; // 60 / timeSec
+}
+
+interface ActiveRectState {
+  x1: number;
+  y1: number;
+  cursorX: number;
+  cursorY: number;
+}
+
+/**
+ * A completed measurement rectangle — blue border, labels at the right edge.
+ * Matches the style in the EchoPAC screenshots (blue box + "2.02 s / 1.70 mV / 29 bpm").
+ */
+function RectMeasurementShape({ m }: { m: RectMeasurement }) {
+  const rx = Math.min(m.x1, m.x2);
+  const ry = Math.min(m.y1, m.y2);
+  const rw = Math.abs(m.x2 - m.x1);
+  const rh = Math.abs(m.y2 - m.y1);
+
+  // Label appears at the right edge of the rectangle, vertically centred
+  const lx = Math.max(m.x1, m.x2) + 6;
+  const ly = (m.y1 + m.y2) / 2;
+
+  const line1 = `${m.timeSec.toFixed(2)} s`;
+  const line2 = `${m.voltMv.toFixed(2)} mV`;
+  const line3 = `${Math.round(m.bpm)} bpm`;
+
+  return (
+    <g>
+      {/* Rectangle border */}
+      <rect
+        x={rx}
+        y={ry}
+        width={rw}
+        height={rh}
+        fill="none"
+        stroke="#7799ff"
+        strokeWidth={1.5}
+        rx={2}
+      />
+      {/* Subtle fill */}
+      <rect
+        x={rx}
+        y={ry}
+        width={rw}
+        height={rh}
+        fill="#5577ff11"
+        rx={2}
+      />
+      {/* Corner dots */}
+      {[
+        [rx, ry],
+        [rx + rw, ry],
+        [rx, ry + rh],
+        [rx + rw, ry + rh],
+      ].map(([cx, cy], i) => (
+        <circle
+          key={i}
+          cx={cx}
+          cy={cy}
+          r={3}
+          fill="#7799ff"
+        />
+      ))}
+      {/* Measurement label box */}
+      <rect
+        x={lx - 2}
+        y={ly - 28}
+        width={72}
+        height={52}
+        rx={4}
+        fill="#0a0e1add"
+        stroke="#7799ff44"
+        strokeWidth={1}
+      />
+      <text
+        x={lx + 2}
+        y={ly - 15}
+        fill="#aabbff"
+        fontSize={11}
+        fontFamily="monospace"
+        fontWeight="bold"
+      >
+        {line1}
+      </text>
+      <text
+        x={lx + 2}
+        y={ly + 1}
+        fill="#aabbff"
+        fontSize={11}
+        fontFamily="monospace"
+        fontWeight="bold"
+      >
+        {line2}
+      </text>
+      <text
+        x={lx + 2}
+        y={ly + 17}
+        fill="#aabbff"
+        fontSize={11}
+        fontFamily="monospace"
+        fontWeight="bold"
+      >
+        {line3}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * Live preview of the rectangle being drawn (dashed border, semi-transparent).
+ */
+function ActiveRectPreview({
+  state,
+  timeSec,
+  voltMv,
+  bpm,
+}: {
+  state: ActiveRectState;
+  timeSec: number;
+  voltMv: number;
+  bpm: number;
+}) {
+  const rx = Math.min(state.x1, state.cursorX);
+  const ry = Math.min(state.y1, state.cursorY);
+  const rw = Math.abs(state.cursorX - state.x1);
+  const rh = Math.abs(state.cursorY - state.y1);
+  const lx = Math.max(state.x1, state.cursorX) + 6;
+  const ly = (state.y1 + state.cursorY) / 2;
+
+  return (
+    <g opacity={0.85}>
+      <rect
+        x={rx}
+        y={ry}
+        width={rw}
+        height={rh}
+        fill="#5577ff18"
+        stroke="#7799ff"
+        strokeWidth={1.5}
+        strokeDasharray="6 3"
+        rx={2}
+      />
+      {/* Crosshair at anchor */}
+      <line
+        x1={state.x1 - 6}
+        y1={state.y1}
+        x2={state.x1 + 6}
+        y2={state.y1}
+        stroke="#7799ff"
+        strokeWidth={1}
+      />
+      <line
+        x1={state.x1}
+        y1={state.y1 - 6}
+        x2={state.x1}
+        y2={state.y1 + 6}
+        stroke="#7799ff"
+        strokeWidth={1}
+      />
+      {/* Live label */}
+      {rw > 10 && (
+        <>
+          <rect
+            x={lx - 2}
+            y={ly - 28}
+            width={72}
+            height={52}
+            rx={4}
+            fill="#0a0e1add"
+            stroke="#7799ff44"
+            strokeWidth={1}
+          />
+          <text
+            x={lx + 2}
+            y={ly - 15}
+            fill="#aabbff"
+            fontSize={11}
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            {timeSec.toFixed(2)} s
+          </text>
+          <text
+            x={lx + 2}
+            y={ly + 1}
+            fill="#aabbff"
+            fontSize={11}
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            {voltMv.toFixed(2)} mV
+          </text>
+          <text
+            x={lx + 2}
+            y={ly + 17}
+            fill="#aabbff"
+            fontSize={11}
+            fontFamily="monospace"
+            fontWeight="bold"
+          >
+            {Math.round(bpm)} bpm
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
 // ─── HR Measurement Types ─────────────────────────────────────────────────────
 
 interface HRMeasurement {
@@ -580,6 +800,8 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
   const [activeQT, setActiveQT] = useState<ActiveQTState | null>(null);
   const [hrMeasurements, setHrMeasurements] = useState<HRMeasurement[]>([]);
   const [activeHR, setActiveHR] = useState<ActiveHRState | null>(null);
+  const [rectMeasurements, setRectMeasurements] = useState<RectMeasurement[]>([]);
+  const [activeRect, setActiveRect] = useState<ActiveRectState | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
@@ -592,6 +814,7 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
       // Clear in-progress states when switching tools
       setActiveQT(null);
       setActiveHR(null);
+      setActiveRect(null);
     });
     // Initialize with current tool
     setActiveTool(ecgToolState.getActiveTool());
@@ -653,6 +876,22 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
       return (px / dimensions.width) * totalSec;
     },
     [leads, dimensions.width]
+  );
+
+  // Convert pixel height to millivolts
+  // ECG standard: 10mm/mV, 25mm/s. The svgH spans all leads in rows.
+  // We compute the mV value from the proportion of a single lead row that the rect covers.
+  const pixelToMv = useCallback(
+    (py: number, svgHeightPx: number) => {
+      const numLeads = leads?.length || 12;
+      const cols = numLeads >= 12 ? 4 : numLeads >= 6 ? 2 : 1;
+      const rows = Math.ceil(numLeads / cols);
+      const leadH = svgHeightPx / rows;
+      // 10mm/mV standard; we treat one lead row ≈ 4mV full scale
+      const mvPerLeadH = 4;
+      return (py / leadH) * mvPerLeadH;
+    },
+    [leads]
   );
 
   // Get SVG coords from mouse event
@@ -741,6 +980,36 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
     [activeHR, getXCoord, pixelToSec]
   );
 
+  // ── Measurement Rectangle Click Handler ──────────────────────────────────
+  const handleRectClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      const pt = getCoords(e);
+
+      if (!activeRect) {
+        // First click: set anchor corner
+        setActiveRect({ x1: pt.x, y1: pt.y, cursorX: pt.x, cursorY: pt.y });
+      } else {
+        // Second click: finalise rectangle
+        const x1 = activeRect.x1;
+        const y1 = activeRect.y1;
+        const x2 = pt.x;
+        const y2 = pt.y;
+        const timeSec = pixelToSec(Math.abs(x2 - x1));
+        const voltMv = pixelToMv(Math.abs(y2 - y1), dimensions.height - (error ? 54 : 34));
+        const bpm = timeSec > 0 ? 60 / timeSec : 0;
+
+        setRectMeasurements(prev => [
+          ...prev,
+          { id: ++measureId, x1, y1, x2, y2, timeSec, voltMv, bpm },
+        ]);
+        rectBus.add({ id: measureId, timeSec, voltMv, bpm });
+        setActiveRect(null);
+      }
+    },
+    [activeRect, getCoords, pixelToSec, pixelToMv, dimensions.height, error]
+  );
+
   // ── Unified Click Handler ─────────────────────────────────────────────────
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -749,10 +1018,12 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
         handleQTClick(e);
       } else if (tool === 'Hr') {
         handleHRClick(e);
+      } else if (tool === 'Measurement') {
+        handleRectClick(e);
       }
       // Other tools: no click behavior
     },
-    [handleQTClick, handleHRClick]
+    [handleQTClick, handleHRClick, handleRectClick]
   );
 
   // ── Mouse Move Handler ────────────────────────────────────────────────────
@@ -764,15 +1035,19 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
       } else if (tool === 'Hr' && activeHR) {
         const x = getXCoord(e);
         setActiveHR(prev => (prev ? { ...prev, cursorX: x } : null));
+      } else if (tool === 'Measurement' && activeRect) {
+        const pt = getCoords(e);
+        setActiveRect(prev => (prev ? { ...prev, cursorX: pt.x, cursorY: pt.y } : null));
       }
     },
-    [activeQT, activeHR, getCoords, getXCoord]
+    [activeQT, activeHR, activeRect, getCoords, getXCoord]
   );
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       setActiveQT(null);
       setActiveHR(null);
+      setActiveRect(null);
     }
   }, []);
 
@@ -831,13 +1106,20 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
       if (!activeHR) return '❤ Click 1st R-peak → then click 2nd R-peak  ·  Measures RR & HR';
       return '2/2 — Click 2nd R-peak to complete HR measurement';
     }
-    if (tool === 'Measurement') return '📏 Select and measure time/voltage intervals';
+    if (tool === 'Measurement') {
+      if (!activeRect)
+        return '📐 Click first corner → click opposite corner to measure time, voltage & BPM';
+      return '2/2 — Click opposite corner to complete rectangle measurement';
+    }
     if (tool === 'QRSAxis') return '⟳ QRS Axis — select leads I and aVF';
     return '🎯 Select a measurement tool from the toolbar above';
   };
 
   // Get cursor style
-  const cursorStyle = activeTool === 'QTPoints' || activeTool === 'Hr' ? 'crosshair' : 'default';
+  const cursorStyle =
+    activeTool === 'QTPoints' || activeTool === 'Hr' || activeTool === 'Measurement'
+      ? 'crosshair'
+      : 'default';
 
   return (
     <div
@@ -876,11 +1158,12 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
           <span style={{ color: '#4facfe', fontSize: 11 }}>
             {leads?.[0]?.samplingFreq || 500} Hz | 25 mm/s | 10 mm/mV
           </span>
-          {(activeQT || activeHR) && (
+          {(activeQT || activeHR || activeRect) && (
             <button
               onClick={() => {
                 setActiveQT(null);
                 setActiveHR(null);
+                setActiveRect(null);
               }}
               style={{
                 background: '#555',
@@ -895,12 +1178,16 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
               Cancel (Esc)
             </button>
           )}
-          {(measurements.length > 0 || hrMeasurements.length > 0) && (
+          {(measurements.length > 0 ||
+            hrMeasurements.length > 0 ||
+            rectMeasurements.length > 0) && (
             <button
               onClick={() => {
                 setMeasurements([]);
                 setHrMeasurements([]);
+                setRectMeasurements([]);
                 hrBus.clear();
+                rectBus.clear();
               }}
               style={{
                 background: '#e53935',
@@ -1038,6 +1325,32 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
                   hrBpm={hrBpm}
                   isDashed={true}
                   opacity={0.75}
+                />
+              );
+            })()}
+
+          {/* ── Measurement Rectangle — completed ── */}
+          {rectMeasurements.map(m => (
+            <RectMeasurementShape
+              key={m.id}
+              m={m}
+            />
+          ))}
+
+          {/* ── Measurement Rectangle — live preview ── */}
+          {activeRect &&
+            (() => {
+              const dxPx = Math.abs(activeRect.cursorX - activeRect.x1);
+              const dyPx = Math.abs(activeRect.cursorY - activeRect.y1);
+              const timeSec = pixelToSec(dxPx);
+              const voltMv = pixelToMv(dyPx, svgH);
+              const bpm = timeSec > 0.05 ? 60 / timeSec : 0;
+              return (
+                <ActiveRectPreview
+                  state={activeRect}
+                  timeSec={timeSec}
+                  voltMv={voltMv}
+                  bpm={bpm}
                 />
               );
             })()}

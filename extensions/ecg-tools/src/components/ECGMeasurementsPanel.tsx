@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { ecgToolState } from '../ecgToolState';
-import { hrBus, HRRecord } from '../hrBus';
+import { hrBus, HRRecord, rectBus, RectRecord } from '../hrBus';
 
 // ── Small metric card component ────────────────────────────────────────────────
 function MetricCard({
@@ -103,6 +103,14 @@ const ECGMeasurementsPanel = ({ servicesManager }) => {
     return unsub;
   }, []);
 
+  // Subscribe to Measurement (rectangle) measurements
+  const [rectRecords, setRectRecords] = useState<RectRecord[]>([]);
+  useEffect(() => {
+    const unsub = rectBus.subscribe(records => setRectRecords([...records]));
+    setRectRecords([...rectBus.records]);
+    return unsub;
+  }, []);
+
   // ── HR Variance calculations ──────────────────────────────────────────────
   const hrValues = hrRecords.map(r => r.hrBpm);
   const rrValues = hrRecords.map(r => r.rrSec * 1000); // ms
@@ -182,7 +190,76 @@ const ECGMeasurementsPanel = ({ servicesManager }) => {
         </span>
       </div>
 
+      {/* ── Measurement (Rectangle) Section ── */}
+      {rectRecords.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <h3 style={{ fontSize: 13, color: '#aabbff', margin: 0 }}>📐 Measurements</h3>
+            <button
+              onClick={() => {
+                rectBus.clear();
+                setRectRecords([]);
+              }}
+              style={{
+                background: '#e5393533',
+                color: '#ff6666',
+                border: '1px solid #e5393555',
+                padding: '2px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 10,
+              }}
+            >
+              Clear
+            </button>
+          </div>
+          {rectRecords.map((r, i) => (
+            <div
+              key={r.id}
+              style={{
+                background: i % 2 === 0 ? '#0d1525' : '#0a1020',
+                borderRadius: 4,
+                padding: '5px 8px',
+                marginBottom: 3,
+                fontSize: 11,
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: 4,
+                border: '1px solid #5577ff22',
+              }}
+            >
+              <div>
+                <span style={{ color: '#5a6a8a' }}>t </span>
+                <span style={{ color: '#aabbff', fontWeight: 'bold' }}>
+                  {r.timeSec.toFixed(2)} s
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#5a6a8a' }}>V </span>
+                <span style={{ color: '#aabbff', fontWeight: 'bold' }}>
+                  {r.voltMv.toFixed(2)} mV
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#5a6a8a' }}>⟳ </span>
+                <span style={{ color: '#66ff99', fontWeight: 'bold' }}>
+                  {Math.round(r.bpm)} bpm
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Heart Rate Measurements Section ── */}
+
       <div style={{ marginBottom: 16 }}>
         <div
           style={{
@@ -451,6 +528,9 @@ const ECGMeasurementsPanel = ({ servicesManager }) => {
         <div style={{ color: '#4a5a7a', marginBottom: 4, fontWeight: 'bold' }}>Quick Guide</div>
         <div>
           ❤ <strong>HR:</strong> Click toolbar → click 2 R-peaks
+        </div>
+        <div>
+          📐 <strong>Measure:</strong> Click corner → click opposite corner
         </div>
         <div>
           🎯 <strong>QT:</strong> Q onset → T end → next Q onset
