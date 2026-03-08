@@ -635,6 +635,8 @@ interface QRSAxisMeasurement {
   x1: number;
   x2: number;
   axisDeg: number;
+  boundsI: { max: number; min: number; baseline: number };
+  boundsaVF: { max: number; min: number; baseline: number };
 }
 
 interface ActiveQRSAxisState {
@@ -657,12 +659,28 @@ function QRSAxisMeasurementShape({
   leadW: number;
   leadH: number;
 }) {
-  const { x1, x2, axisDeg } = m;
+  const { x1, x2, axisDeg, boundsI, boundsaVF } = m;
   const labelText = `${axisDeg.toFixed(2)}°`;
   const labelWidth = labelText.length * 8 + 12;
 
   const iIndex = leads?.findIndex(l => l.name === 'I');
   const aVFIndex = leads?.findIndex(l => l.name === 'aVF');
+
+  // Helper to project value to Y
+  function getLeadVisualY(v: number, leadData: number[], height: number) {
+    if (!leadData?.length) return 0;
+    const maxPts = 2000;
+    const step = Math.max(1, Math.floor(leadData.length / maxPts));
+    let min = leadData[0],
+      max = leadData[0];
+    for (let i = 0; i < leadData.length; i += step) {
+      if (leadData[i] < min) min = leadData[i];
+      if (leadData[i] > max) max = leadData[i];
+    }
+    const range = max - min || 1;
+    const scale = (height * 0.72) / range;
+    return height / 2 - (v - (min + max) / 2) * scale;
+  }
 
   return (
     <g>
@@ -673,6 +691,7 @@ function QRSAxisMeasurementShape({
         y2={svgH}
         stroke="#aaddff"
         strokeWidth={1}
+        strokeDasharray="3 3"
       />
       <line
         x1={x2}
@@ -681,6 +700,7 @@ function QRSAxisMeasurementShape({
         y2={svgH}
         stroke="#aaddff"
         strokeWidth={1}
+        strokeDasharray="3 3"
       />
 
       {[iIndex, aVFIndex].map(idx => {
@@ -697,17 +717,40 @@ function QRSAxisMeasurementShape({
         // Transform the local X into the visual column of THIS lead
         const boxX = col * leadW + localX1;
 
+        const lead = leads[idx];
+        const isI = lead.name === 'I';
+        const bounds = isI ? boundsI : boundsaVF;
+
+        if (!bounds || !lead) return null;
+
+        const yTop = getLeadVisualY(bounds.max, lead.data, leadH);
+        const yBottom = getLeadVisualY(bounds.min, lead.data, leadH);
+
+        const boxY = ry + Math.min(yTop, yBottom);
+        const boxH = Math.abs(yBottom - yTop);
+
         return (
-          <rect
-            key={idx}
-            x={boxX}
-            y={ry}
-            width={widthPx}
-            height={leadH}
-            fill="#ff555522"
-            stroke="#ff555544"
-            strokeWidth={1}
-          />
+          <g key={idx}>
+            <rect
+              x={boxX}
+              y={boxY}
+              width={widthPx}
+              height={Math.max(boxH, 1)}
+              fill="none"
+              stroke="#ff4444"
+              strokeWidth={1.2}
+            />
+            {/* Baseline horizontal line reference */}
+            <line
+              x1={boxX}
+              y1={ry + getLeadVisualY(bounds.baseline, lead.data, leadH)}
+              x2={boxX + widthPx}
+              y2={ry + getLeadVisualY(bounds.baseline, lead.data, leadH)}
+              stroke="#ff4444"
+              strokeWidth={0.8}
+              strokeDasharray="2 2"
+            />
+          </g>
         );
       })}
 
@@ -1174,6 +1217,9 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
         const sortedX2 = Math.max(x1, x2);
 
         let axisDeg = 0;
+        let boundsI = { max: 0, min: 0, baseline: 0 };
+        let boundsaVF = { max: 0, min: 0, baseline: 0 };
+
         if (leads?.length) {
           const numLeads = leads.length;
           const cols = numLeads >= 12 ? 4 : numLeads >= 6 ? 2 : 1;
@@ -1194,20 +1240,29 @@ export default function ECGWaveformViewport({ displaySets, servicesManager }: an
           const iData = iLead.data.slice(startIndex, endIndex + 1);
           const aVFData = aVFLead.data.slice(startIndex, endIndex + 1);
 
+          const baselineI = iData[0] || 0;
+          const baselineaVF = aVFData[0] || 0;
+
           const maxI = iData.length ? Math.max(...iData) : 0;
           const minI = iData.length ? Math.min(...iData) : 0;
           const maxaVF = aVFData.length ? Math.max(...aVFData) : 0;
           const minaVF = aVFData.length ? Math.min(...aVFData) : 0;
 
-          const netI = maxI + minI;
-          const netaVF = maxaVF + minaVF;
+          const netI = maxI - baselineI + (minI - baselineI);
+          const netaVF = maxaVF - baselineaVF + (minaVF - baselineaVF);
 
           // Medical positive aVF points down (+90 degrees), standard atan2 natively maps this correctly.
           axisDeg = Math.atan2(netaVF, netI) * (180 / Math.PI);
+
+          boundsI = { max: maxI, min: minI, baseline: baselineI };
+          boundsaVF = { max: maxaVF, min: minaVF, baseline: baselineaVF };
         }
 
         const newId = ++measureId;
-        setQrsMeasurements(prev => [...prev, { id: newId, x1: sortedX1, x2: sortedX2, axisDeg }]);
+        setQrsMeasurements(prev => [
+          ...prev,
+          { id: newId, x1: sortedX1, x2: sortedX2, axisDeg, boundsI, boundsaVF },
+        ]);
         qrsBus.add({ id: newId, axisDeg });
         setActiveQRS(null);
       }
