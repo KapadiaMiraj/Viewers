@@ -87,6 +87,7 @@ export const extensionDependencies = {
   '@ohif/extension-dicom-pdf': '^3.0.1',
   '@ohif/extension-dicom-video': '^3.0.1',
   '@ohif/extension-ecg-tools': '^3.0.0',
+  '@ohif/extension-flatfoot': '^3.0.0',
 };
 
 export const sopClassHandlers = [
@@ -250,6 +251,7 @@ export const toolbarSections = {
   MeasurementTools: [
     'Length',
     'Bidirectional',
+    'FlatfootMeasurement',
     'ArrowAnnotate',
     'EllipticalROI',
     'RectangleROI',

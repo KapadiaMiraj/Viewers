@@ -13,6 +13,11 @@
       "version": "3.0.0"
     },
     {
+      "packageName": "@ohif/extension-flatfoot",
+      "default": false,
+      "version": "3.0.0"
+    },
+    {
       "packageName": "@ohif/extension-cornerstone-dicom-sr",
       "default": false,
       "version": "3.0.0"

@@ -57,6 +57,7 @@
     "@cornerstonejs/dicom-image-loader": "4.18.2",
     "@emotion/serialize": "1.3.3",
     "@ohif/core": "3.13.0-beta.35",
+    "@ohif/extension-flatfoot": "3.13.0-beta.35",
     "@ohif/extension-cornerstone": "3.13.0-beta.35",
     "@ohif/extension-cornerstone-dicom-rt": "3.13.0-beta.35",
     "@ohif/extension-cornerstone-dicom-seg": "3.13.0-beta.35",

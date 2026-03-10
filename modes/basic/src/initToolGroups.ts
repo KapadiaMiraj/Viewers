@@ -38,6 +38,7 @@ function initDefaultToolGroup(extensionManager, toolGroupService, commandsManage
     ],
     passive: [
       { toolName: toolNames.Length },
+      { toolName: 'FlatfootMeasurement' },
       {
         toolName: toolNames.ArrowAnnotate,
         configuration: {
@@ -198,6 +199,7 @@ function initMPRToolGroup(extensionManager, toolGroupService, commandsManager) {
     ],
     passive: [
       { toolName: toolNames.Length },
+      { toolName: 'FlatfootMeasurement' },
       {
         toolName: toolNames.ArrowAnnotate,
         configuration: {

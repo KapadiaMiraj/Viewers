@@ -475,6 +475,17 @@ const toolbarButtons: Button[] = [
     },
   },
   {
+    id: 'FlatfootMeasurement',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'tool-angle',
+      label: 'Flatfoot Arch',
+      tooltip: 'Flatfoot Arch Measurement',
+      commands: setToolActiveToolbar,
+      evaluate: 'evaluate.cornerstoneTool',
+    },
+  },
+  {
     id: 'Bidirectional',
     uiType: 'ohif.toolButton',
     props: {
